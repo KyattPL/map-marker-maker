@@ -3,7 +3,6 @@ import React, { useState, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { X, Move, ZoomIn, ZoomOut, RotateCcw, MapPin, Check, Copy } from 'lucide-react';
-
 import Image from 'next/image';
 
 interface Marker {
@@ -24,12 +23,13 @@ const ImageMarkerCreator = () => {
     const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
     const [isAddingMarker, setIsAddingMarker] = useState(false);
-    const containerRef: React.RefObject<HTMLDivElement | null> = useRef(null);
-
     const [copied, setCopied] = useState(false);
 
+    const containerRef = useRef<HTMLDivElement>(null);
+    const imageRef = useRef<HTMLImageElement>(null);
+
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files![0];
+        const file = e.target.files?.[0];
         if (file) {
             const url = URL.createObjectURL(file);
             setImageUrl(url);
@@ -39,14 +39,26 @@ const ImageMarkerCreator = () => {
         }
     };
 
-    const handleImageClick = (e: React.MouseEvent) => {
-        if (isAddingMarker && !isDragging && !isDraggingCanvas && containerRef.current) {
-            const rect = containerRef.current.getBoundingClientRect();
-            const x = (((e.clientX - rect.left) - position.x) / scale / rect.width) * 100;
-            const y = (((e.clientY - rect.top) - position.y) / scale / rect.height) * 100;
+    const getImageCoordinates = (clientX: number, clientY: number): { x: number, y: number } | null => {
+        if (!imageRef.current) return null;
 
-            setMarkers([...markers, { id: Date.now(), x, y }]);
-            setIsAddingMarker(false); // Turn off marker adding mode after placing
+        const rect = imageRef.current.getBoundingClientRect();
+        const x = ((clientX - rect.left) / rect.width) * 100;
+        const y = ((clientY - rect.top) / rect.height) * 100;
+
+        return {
+            x: Math.min(Math.max(x, 0), 100),
+            y: Math.min(Math.max(y, 0), 100)
+        };
+    };
+
+    const handleImageClick = (e: React.MouseEvent) => {
+        if (isAddingMarker && !isDragging && !isDraggingCanvas) {
+            const coords = getImageCoordinates(e.clientX, e.clientY);
+            if (coords) {
+                setMarkers([...markers, { id: Date.now(), ...coords }]);
+                setIsAddingMarker(false);
+            }
         }
     };
 
@@ -62,17 +74,14 @@ const ImageMarkerCreator = () => {
     };
 
     const handleMarkerDrag = (e: React.MouseEvent) => {
-        if (isDragging && draggedMarker && containerRef.current) {
+        if (isDragging && draggedMarker) {
             e.stopPropagation();
-            const rect = containerRef.current.getBoundingClientRect();
-            const x = (((e.clientX - rect.left) - position.x) / scale / rect.width) * 100;
-            const y = (((e.clientY - rect.top) - position.y) / scale / rect.height) * 100;
-
-            setMarkers(markers.map(m =>
-                m.id === draggedMarker.id
-                    ? { ...m, x: Math.min(Math.max(x, 0), 100), y: Math.min(Math.max(y, 0), 100) }
-                    : m
-            ));
+            const coords = getImageCoordinates(e.clientX, e.clientY);
+            if (coords) {
+                setMarkers(markers.map(m =>
+                    m.id === draggedMarker.id ? { ...m, ...coords } : m
+                ));
+            }
         }
     };
 
@@ -121,6 +130,7 @@ const ImageMarkerCreator = () => {
 
     return (
         <div className="w-full max-w-4xl mx-auto p-4 space-y-4">
+            {/* Logo and title section */}
             <div className="flex items-center justify-center gap-3 mb-6">
                 <div className="relative w-32 h-32">
                     <Image
@@ -133,6 +143,7 @@ const ImageMarkerCreator = () => {
                 </div>
                 <h1 className="text-2xl font-bold text-gray-800">Map Marker Maker</h1>
             </div>
+
             <Card className="p-4">
                 <div className="space-y-4">
                     <input
@@ -144,6 +155,7 @@ const ImageMarkerCreator = () => {
 
                     {imageUrl && (
                         <>
+                            {/* Controls */}
                             <div className="flex gap-2 mb-2">
                                 <Button onClick={() => handleZoom(true)} size="sm">
                                     <ZoomIn className="h-4 w-4 mr-1" /> Zoom In
@@ -164,9 +176,13 @@ const ImageMarkerCreator = () => {
                                 </Button>
                             </div>
 
+                            {/* Image container */}
                             <div
                                 ref={containerRef}
-                                className={`relative w-full aspect-video bg-gray-100 ${isAddingMarker ? 'cursor-crosshair' : 'cursor-move'} overflow-hidden`}
+                                className="relative w-full h-[600px] bg-gray-100 overflow-hidden"
+                                style={{
+                                    cursor: isAddingMarker ? 'crosshair' : 'move'
+                                }}
                                 onClick={handleImageClick}
                                 onMouseDown={handleCanvasDragStart}
                                 onMouseMove={(e) => {
@@ -187,24 +203,26 @@ const ImageMarkerCreator = () => {
                                         transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
                                         transformOrigin: '0 0',
                                     }}
-                                    className="absolute top-0 left-0 w-full h-full"
+                                    className="absolute top-0 left-0 h-full flex items-center justify-center"
                                 >
                                     <img
+                                        ref={imageRef}
                                         src={imageUrl}
                                         alt="Uploaded image"
-                                        className="w-full h-full object-contain"
+                                        className="h-full w-auto"
                                         draggable="false"
                                     />
 
+                                    {/* Markers */}
                                     {markers.map((marker) => (
                                         <div
                                             key={marker.id}
-                                            className="absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2"
+                                            className="absolute w-8 h-8"
                                             style={{
                                                 left: `${marker.x}%`,
                                                 top: `${marker.y}%`,
                                                 cursor: isDragging ? 'grabbing' : 'grab',
-                                                transform: `translate(-50%, -50%) scale(${1 / scale})` // Counter the parent scaling
+                                                transform: `translate(-50%, -50%) scale(${1 / scale})`
                                             }}
                                             onMouseDown={(e) => handleMarkerDragStart(e, marker)}
                                         >
@@ -228,6 +246,7 @@ const ImageMarkerCreator = () => {
                         </>
                     )}
 
+                    {/* JSON Output */}
                     <div className="mt-4">
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="text-lg font-semibold text-gray-800">Marker Positions (JSON):</h3>
